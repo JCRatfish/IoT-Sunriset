@@ -1,56 +1,63 @@
 from astral import *
 from astral.sun import *
-from datetime import timedelta, datetime
-import datetime
-import time
-import pytz
+from datetime import *
+from pytz import timezone
+import datetime, pytz, sys, time
 import RPi.GPIO as GPIO
-import sys
 
-now = datetime.datetime.now(datetime.timezone.utc)
-todayutc = datetime.datetime.strptime(now.strftime("%Y-%m-%d"), "%Y-%m-%d")
+# Setup runtime parameters
 city = LocationInfo("Toronto", "Ontario", "America/Toronto", 43.754543, -79.361615)
-output_pin = 12
-s = sun(city.observer, date=todayutc)
 lights = True
+output_pin = 12
+prevResult = None
+toronto = timezone("America/Toronto")
 
+# Initialize Raspberry Pi GPIO
 GPIO.setmode(GPIO.BOARD)
 GPIO.setup(output_pin, GPIO.OUT)
 
+# Main loop
 while True:
+	# All times used for calculations should be UTC
+	utcdatetime = datetime.datetime.now(datetime.timezone.utc)
+	utctoday = datetime.datetime.strptime(utcdatetime.strftime("%Y-%m-%d"), "%Y-%m-%d")
+	s = sun(city.observer, date=utctoday)
 
-	now = datetime.datetime.now(datetime.timezone.utc)
-	todayutc = datetime.datetime.strptime(now.strftime("%Y-%m-%d"), "%Y-%m-%d")
+	# Set the lights variable to control the GPIO
+	if utcdatetime < s["sunrise"] and utcdatetime < s["sunset"]:
+		# Before sunrise and sunset: OFF
+		lights = False
+	elif utcdatetime > s["sunrise"] and utcdatetime > s["sunset"]:
+		# After sunrise and sunset: OFF
+		lights = False
+	elif utcdatetime > s["sunrise"] and utcdatetime < s["sunset"]:
+		# After sunrise and before sunset: ON
+		lights = True
+	elif utcdatetime < s["sunrise"] or utcdatetime > s["sunset"]:
+		# Before sunrise or after sunset: OFF
+		lights = False
 
-	if now < s["sunrise"] and now < s["sunset"]:
-			s = sun(city.observer, date=todayutc - timedelta(days=1))
-			lights = False
-	elif now > s["sunrise"] and now > s["sunset"]:
-			s = sun(city.observer, date=todayutc)
-			lights = False
-	elif now > s["sunrise"] and now < s["sunset"]:
-			lights = True
-	elif now > s["sunset"] or now < s["sunrise"]:
-			lights = False
+	# Output to the GPIO if the lights variable differs from the prevResult variable
+	if prevResult != lights:
+		prevResult = lights
 
-	with open('/home/pi/sunriset.log', 'a') as log:
-		sys.stdout = log # Change the standard output to the file we created.
+		# Set the GPIO output
+		GPIO.output(output_pin, GPIO.HIGH) if lights else GPIO.output(output_pin, GPIO.LOW)
 
-		if lights == True:
-				print ("lights on")
-				GPIO.output(output_pin, GPIO.HIGH)
-		else:
-				print("lights off")
-				GPIO.output(output_pin, GPIO.LOW)
-
-		print((
-				f"Information for {city.name}/{city.region}\n"
-				f"Date:     {datetime.datetime.now()}\n"
-				f"DateUTC:  {datetime.datetime.now(datetime.timezone.utc)}\n"
+		# Log -- MUST output to a file or the system will crash!!
+		with open('/home/pi/sunriset.log', 'a') as log:
+			# Change the standard output to the file we created.
+			sys.stdout = log
+			print ("Lights: ON") if lights else print ("Lights: OFF")
+			print((
+				f"Date:     {toronto.localize(datetime.datetime.now())}\n"
+				f"DateUTC:  {utcdatetime}\n"
 				f"Sunrise:  {s['sunrise']}\n"
 				f"Sunset:   {s['sunset']}\n"
-		))
+			))
 
-	log.close()
+		# Close the file
+		log.close()
 
+	# Loop every minute
 	time.sleep(60)
