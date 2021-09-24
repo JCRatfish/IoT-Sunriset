@@ -5,6 +5,7 @@ import datetime
 import time
 import pytz
 import RPi.GPIO as GPIO
+import sys
 
 now = datetime.datetime.now(datetime.timezone.utc)
 todayutc = datetime.datetime.strptime(now.strftime("%Y-%m-%d"), "%Y-%m-%d")
@@ -22,26 +23,34 @@ while True:
 	todayutc = datetime.datetime.strptime(now.strftime("%Y-%m-%d"), "%Y-%m-%d")
 
 	if now < s["sunrise"] and now < s["sunset"]:
-		s = sun(city.observer, date=todayutc - timedelta(days=1))
-		lights = False
+			s = sun(city.observer, date=todayutc - timedelta(days=1))
+			lights = False
+	elif now > s["sunrise"] and now > s["sunset"]:
+			s = sun(city.observer, date=todayutc)
+			lights = False
 	elif now > s["sunrise"] and now < s["sunset"]:
-		lights = True
+			lights = True
 	elif now > s["sunset"] or now < s["sunrise"]:
-		lights = False
+			lights = False
 
-	if lights == True:
-		print ("lights on")
-		GPIO.output(output_pin, GPIO.HIGH)
-	else:
-		print("lights off")
-		GPIO.output(output_pin, GPIO.LOW)
+	with open('/home/pi/sunriset.log', 'a') as log:
+		sys.stdout = log # Change the standard output to the file we created.
 
-	print((
-		f"Information for {city.name}/{city.region}\n"
-		f"Date:	 {datetime.datetime.now()}\n"
-		f"DateUTC:  {datetime.datetime.now(datetime.timezone.utc)}\n"
-		f"Sunrise:  {s['sunrise']}\n"
-		f"Sunset:   {s['sunset']}\n"
-	))
+		if lights == True:
+				print ("lights on")
+				GPIO.output(output_pin, GPIO.HIGH)
+		else:
+				print("lights off")
+				GPIO.output(output_pin, GPIO.LOW)
 
-	time.sleep (60)
+		print((
+				f"Information for {city.name}/{city.region}\n"
+				f"Date:     {datetime.datetime.now()}\n"
+				f"DateUTC:  {datetime.datetime.now(datetime.timezone.utc)}\n"
+				f"Sunrise:  {s['sunrise']}\n"
+				f"Sunset:   {s['sunset']}\n"
+		))
+
+	log.close()
+
+	time.sleep(60)
