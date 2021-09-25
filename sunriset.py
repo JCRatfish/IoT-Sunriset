@@ -1,20 +1,19 @@
 from astral import *
 from astral.sun import *
 from datetime import *
+from pyfirmata import Arduino, util
 from pytz import timezone
 import datetime, pytz, sys, time
-import RPi.GPIO as GPIO
 
-# Setup runtime parameters
+# Setup variables
 city = LocationInfo("Toronto", "Ontario", "America/Toronto", 43.754543, -79.361615)
-lights = True
+output = True
 output_pin = 12
-prevResult = None
+output_previous_result = None
 toronto = timezone("America/Toronto")
 
-# Initialize Raspberry Pi GPIO
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(output_pin, GPIO.OUT)
+# Initialize Arduino
+arduino = Arduino('COM3')
 
 # Main loop
 while True:
@@ -23,41 +22,27 @@ while True:
 	utctoday = datetime.datetime.strptime(utcdatetime.strftime("%Y-%m-%d"), "%Y-%m-%d")
 	s = sun(city.observer, date=utctoday)
 
-	# Set the lights variable to control the GPIO
+	# Set the output variable
 	if utcdatetime < s["sunrise"] and utcdatetime < s["sunset"]:
 		# Before sunrise and sunset: OFF
-		lights = False
+		output = False
 	elif utcdatetime > s["sunrise"] and utcdatetime > s["sunset"]:
 		# After sunrise and sunset: OFF
-		lights = False
+		output = False
 	elif utcdatetime > s["sunrise"] and utcdatetime < s["sunset"]:
 		# After sunrise and before sunset: ON
-		lights = True
+		output = True
 	elif utcdatetime < s["sunrise"] or utcdatetime > s["sunset"]:
 		# Before sunrise or after sunset: OFF
-		lights = False
+		output = False
 
-	# Output to the GPIO if the lights variable differs from the prevResult variable
-	if prevResult != lights:
-		prevResult = lights
+	# Output to the Arduino if output differs from output_previous_result
+	if output_previous_result != output:
+		output_previous_result = output
 
-		# Set the GPIO output
-		GPIO.output(output_pin, GPIO.HIGH) if lights else GPIO.output(output_pin, GPIO.LOW)
-
-		# Log -- MUST output to a file or the system will crash!!
-		with open('/home/pi/sunriset.log', 'a') as log:
-			# Change the standard output to the file we created.
-			sys.stdout = log
-			print ("Lights: ON") if lights else print ("Lights: OFF")
-			print((
-				f"Date:     {toronto.localize(datetime.datetime.now())}\n"
-				f"DateUTC:  {utcdatetime}\n"
-				f"Sunrise:  {s['sunrise']}\n"
-				f"Sunset:   {s['sunset']}\n"
-			))
-
-		# Close the file
-		log.close()
+		# Set the Arduino output
+		arduino.digital[13].write(output) # Arduino LED
+		arduino.digital[output_pin].write(output)
 
 	# Loop every minute
 	time.sleep(60)
